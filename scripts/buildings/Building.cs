@@ -12,6 +12,9 @@ public partial class Building : Node2D
     [Export] public Vector2I GridSize { get; set; } = Vector2I.One;
     [Export] public int CellSize { get; set; } = 64;
 
+    // Placement previews must never consume mouse clicks.
+    public bool InputEnabled { get; set; } = true;
+
     public Vector2I GridOrigin { get; set; }
     public bool IsSelected { get; private set; }
 
@@ -26,6 +29,9 @@ public partial class Building : Node2D
 
     public override void _UnhandledInput(InputEvent @event)
     {
+        if (!InputEnabled)
+            return;
+
         if (@event is not InputEventMouseButton mouse ||
             !mouse.Pressed ||
             mouse.ButtonIndex != MouseButton.Left)
@@ -75,6 +81,7 @@ public partial class Building : Node2D
         }
 
         Texture2D? texture = GD.Load<Texture2D>(definition.TexturePath);
+
         if (texture == null)
         {
             GD.PushError($"Could not load building texture: {definition.TexturePath}");
@@ -82,6 +89,7 @@ public partial class Building : Node2D
         }
 
         Vector2 textureSize = texture.GetSize();
+
         if (textureSize.X <= 0 || textureSize.Y <= 0)
             return;
 
@@ -97,11 +105,19 @@ public partial class Building : Node2D
 
         float targetWidth = GridSize.X * CellSize * 1.25f;
         float targetHeight = GridSize.Y * CellSize * 1.70f;
-        float scale = Mathf.Max(targetWidth / textureSize.X, targetHeight / textureSize.Y);
+
+        float scale = Mathf.Max(
+            targetWidth / textureSize.X,
+            targetHeight / textureSize.Y
+        );
+
         scale = Mathf.Clamp(scale, 0.02f, 4.0f);
 
         _sprite.Scale = Vector2.One * scale;
-        _sprite.Position = new Vector2(0, -GridSize.Y * CellSize * 0.20f);
+        _sprite.Position = new Vector2(
+            0,
+            -GridSize.Y * CellSize * 0.20f
+        );
 
         _textureLoaded = true;
         QueueRedraw();
