@@ -26,32 +26,6 @@ public partial class Building : Node2D
         QueueRedraw();
     }
 
-    // Selection stays on unhandled input on purpose:
-    // placement/camera get first chance via _Input().
-    public override void _UnhandledInput(InputEvent @event)
-    {
-        if (!InputEnabled)
-            return;
-
-        if (@event is not InputEventMouseButton mouse ||
-            !mouse.Pressed ||
-            mouse.ButtonIndex != MouseButton.Left)
-            return;
-
-        Vector2 local = ToLocal(GetGlobalMousePosition());
-        Vector2 pixelSize =
-            new(GridSize.X * CellSize, GridSize.Y * CellSize);
-
-        Rect2 bounds =
-            new(-pixelSize * 0.5f, pixelSize);
-
-        if (!bounds.HasPoint(local))
-            return;
-
-        Selected?.Invoke(this);
-        GetViewport().SetInputAsHandled();
-    }
-
     public void SetSelected(bool selected)
     {
         IsSelected = selected;
@@ -85,16 +59,16 @@ public partial class Building : Node2D
         if (IsSelected)
         {
             DrawRect(
-                footprint.Grow(6),
-                new Color(0.25f, 0.9f, 1f, 0.18f),
+                footprint.Grow(-3),
+                new Color(0.20f, 0.90f, 1f, 0.16f),
                 true
             );
 
             DrawRect(
-                footprint.Grow(6),
+                footprint.Grow(-3),
                 new Color("#63e2ff"),
                 false,
-                4f
+                3f
             );
         }
     }
@@ -105,9 +79,7 @@ public partial class Building : Node2D
                 BuildingId,
                 out BuildingDefinition definition))
         {
-            GD.PushWarning(
-                $"Unknown building id: {BuildingId}"
-            );
+            GD.PushWarning($"Unknown building id: {BuildingId}");
             return;
         }
 
@@ -117,16 +89,14 @@ public partial class Building : Node2D
         if (texture == null)
         {
             GD.PushError(
-                $"Could not load building texture: " +
-                $"{definition.TexturePath}"
+                $"Could not load building texture: {definition.TexturePath}"
             );
             return;
         }
 
         Vector2 textureSize = texture.GetSize();
 
-        if (textureSize.X <= 0 ||
-            textureSize.Y <= 0)
+        if (textureSize.X <= 0 || textureSize.Y <= 0)
             return;
 
         _sprite = new Sprite2D
@@ -139,31 +109,24 @@ public partial class Building : Node2D
 
         AddChild(_sprite);
 
-        float targetWidth =
-            GridSize.X * CellSize * 1.25f;
+        // IMPORTANT:
+        // The complete PNG must stay inside the logical grid footprint.
+        // Leave a little padding so it never touches/crosses the grid border.
+        float maxWidth =
+            GridSize.X * CellSize * 0.88f;
 
-        float targetHeight =
-            GridSize.Y * CellSize * 1.70f;
+        float maxHeight =
+            GridSize.Y * CellSize * 0.88f;
 
-        float scale = Mathf.Max(
-            targetWidth / textureSize.X,
-            targetHeight / textureSize.Y
+        float scale = Mathf.Min(
+            maxWidth / textureSize.X,
+            maxHeight / textureSize.Y
         );
 
-        scale = Mathf.Clamp(
-            scale,
-            0.02f,
-            4.0f
-        );
+        scale = Mathf.Clamp(scale, 0.001f, 4.0f);
 
-        _sprite.Scale =
-            Vector2.One * scale;
-
-        _sprite.Position =
-            new Vector2(
-                0,
-                -GridSize.Y * CellSize * 0.20f
-            );
+        _sprite.Scale = Vector2.One * scale;
+        _sprite.Position = Vector2.Zero;
 
         _textureLoaded = true;
         QueueRedraw();

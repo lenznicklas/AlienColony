@@ -19,6 +19,16 @@ public partial class PlacementManager : Node2D
     private Vector2I _movingOriginalOrigin;
     private string _selectedId = "";
 
+    // Mobile pointer state.
+    private bool _touchPlacementActive;
+    private Vector2 _touchWorldPosition;
+    private bool _hasTouchWorldPosition;
+
+    // Tap/click selection state.
+    private bool _pointerDown;
+    private Vector2 _pointerDownScreen;
+    private const float TapThreshold = 18f;
+
     public bool IsPlacing => _preview != null;
 
     public override void _Ready()
@@ -30,7 +40,6 @@ public partial class PlacementManager : Node2D
 
         SpawnBuilding("main_core", new Vector2I(13, 13), false);
 
-        // We need guaranteed input delivery for placement.
         SetProcessInput(true);
     }
 
@@ -39,101 +48,250 @@ public partial class PlacementManager : Node2D
         if (_preview == null || string.IsNullOrEmpty(_selectedId))
             return;
 
-        BuildingDefinition def = BuildingCatalog.Get(_selectedId);
-        Vector2I origin = GetCurrentGridOrigin();
+        BuildingDefinition def =
+            BuildingCatalog.Get(_selectedId);
+
+        Vector2 worldPosition =
+            _hasTouchWorldPosition
+                ? _touchWorldPosition
+                : GetGlobalMousePosition();
+
+        Vector2I origin =
+            _grid.WorldToGrid(worldPosition);
 
         _preview.GlobalPosition =
-            _grid.GridToWorldCentered(origin, def.GridSize);
+            _grid.GridToWorldCentered(
+                origin,
+                def.GridSize
+            );
 
         bool valid =
-            _grid.CanPlace(origin, def.GridSize, _movingBuilding);
+            _grid.CanPlace(
+                origin,
+                def.GridSize,
+                _movingBuilding
+            );
 
         bool affordable =
             _movingBuilding != null ||
             _resources.CanAfford(_selectedId);
 
         _preview.Modulate = valid && affordable
-            ? new Color(0.55f, 1f, 0.65f, 0.78f)
-            : new Color(1f, 0.30f, 0.30f, 0.78f);
+            ? new Color(0.55f, 1f, 0.65f, 0.80f)
+            : new Color(1f, 0.30f, 0.30f, 0.80f);
     }
 
     public override void _Input(InputEvent @event)
     {
-        // Keyboard shortcuts always work.
-        if (@event is InputEventKey key &&
-            key.Pressed &&
-            !key.Echo)
+        HandleKeyboard(@event);
+
+        if (@event is InputEventScreenTouch touch)
         {
-            switch (key.Keycode)
-            {
-                case Key.Key1:
-                    BeginMiningDrill();
-                    GetViewport().SetInputAsHandled();
-                    return;
-
-                case Key.Key2:
-                    BeginStorage();
-                    GetViewport().SetInputAsHandled();
-                    return;
-
-                case Key.Key3:
-                    BeginSmelter();
-                    GetViewport().SetInputAsHandled();
-                    return;
-
-                case Key.Key4:
-                    BeginPowerGenerator();
-                    GetViewport().SetInputAsHandled();
-                    return;
-
-                case Key.Escape:
-                    if (IsPlacing)
-                    {
-                        CancelPlacement();
-                        GetViewport().SetInputAsHandled();
-                    }
-                    return;
-
-                case Key.Delete:
-                    if (!IsPlacing)
-                    {
-                        DeleteSelected();
-                        GetViewport().SetInputAsHandled();
-                    }
-                    return;
-            }
+            HandleTouch(touch);
+            return;
         }
 
-        if (!IsPlacing)
-            return;
-
-        // While placing, the placement system owns left/right mouse clicks.
-        if (@event is InputEventMouseButton mouse && mouse.Pressed)
+        if (@event is InputEventScreenDrag drag)
         {
-            if (mouse.ButtonIndex == MouseButton.Left)
-            {
-                ConfirmCurrentPlacement();
-                GetViewport().SetInputAsHandled();
-                return;
-            }
+            HandleTouchDrag(drag);
+            return;
+        }
 
-            if (mouse.ButtonIndex == MouseButton.Right)
-            {
-                CancelPlacement();
-                GetViewport().SetInputAsHandled();
-                return;
-            }
+        if (@event is InputEventMouseButton mouse)
+        {
+            HandleMouseButton(mouse);
+            return;
         }
     }
 
-    public void BeginMiningDrill() => BeginPlacement("mining_drill");
-    public void BeginStorage() => BeginPlacement("storage");
-    public void BeginSmelter() => BeginPlacement("smelter");
-    public void BeginPowerGenerator() => BeginPlacement("power_generator");
+    private void HandleKeyboard(InputEvent @event)
+    {
+        if (@event is not InputEventKey key ||
+            !key.Pressed ||
+            key.Echo)
+            return;
+
+        switch (key.Keycode)
+        {
+            case Key.Key1:
+                BeginMiningDrill();
+                GetViewport().SetInputAsHandled();
+                break;
+
+            case Key.Key2:
+                BeginStorage();
+                GetViewport().SetInputAsHandled();
+                break;
+
+            case Key.Key3:
+                BeginSmelter();
+                GetViewport().SetInputAsHandled();
+                break;
+
+            case Key.Key4:
+                BeginPowerGenerator();
+                GetViewport().SetInputAsHandled();
+                break;
+
+            case Key.Escape:
+                if (IsPlacing)
+                {
+                    CancelPlacement();
+                    GetViewport().SetInputAsHandled();
+                }
+                break;
+
+            case Key.Delete:
+                if (!IsPlacing)
+                {
+                    DeleteSelected();
+                    GetViewport().SetInputAsHandled();
+                }
+                break;
+        }
+    }
+
+    private void HandleTouch(InputEventScreenTouch touch)
+    {
+        Vector2 world =
+            ScreenToWorld(touch.Position);
+
+        if (IsPlacing)
+        {
+            _hasTouchWorldPosition = true;
+            _touchWorldPosition = world;
+
+            if (touch.Pressed)
+            {
+                // Finger may now drag the preview around.
+                _touchPlacementActive = true;
+            }
+            else if (_touchPlacementActive)
+            {
+                // Confirm only when the finger is released.
+                _touchPlacementActive = false;
+                ConfirmPlacementAt(world);
+            }
+
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (touch.Pressed)
+        {
+            _pointerDown = true;
+            _pointerDownScreen = touch.Position;
+            return;
+        }
+
+        if (_pointerDown)
+        {
+            float moved =
+                touch.Position.DistanceTo(_pointerDownScreen);
+
+            _pointerDown = false;
+
+            if (moved <= TapThreshold)
+                SelectOrClearAt(world);
+        }
+    }
+
+    private void HandleTouchDrag(InputEventScreenDrag drag)
+    {
+        if (!IsPlacing || !_touchPlacementActive)
+            return;
+
+        _hasTouchWorldPosition = true;
+        _touchWorldPosition =
+            ScreenToWorld(drag.Position);
+
+        GetViewport().SetInputAsHandled();
+    }
+
+    private void HandleMouseButton(
+        InputEventMouseButton mouse)
+    {
+        if (mouse.ButtonIndex == MouseButton.Left)
+        {
+            if (IsPlacing)
+            {
+                if (mouse.Pressed)
+                {
+                    ConfirmPlacementAt(
+                        GetGlobalMousePosition()
+                    );
+
+                    GetViewport().SetInputAsHandled();
+                }
+
+                return;
+            }
+
+            if (mouse.Pressed)
+            {
+                _pointerDown = true;
+                _pointerDownScreen = mouse.Position;
+            }
+            else if (_pointerDown)
+            {
+                float moved =
+                    mouse.Position.DistanceTo(_pointerDownScreen);
+
+                _pointerDown = false;
+
+                if (moved <= TapThreshold)
+                {
+                    SelectOrClearAt(
+                        GetGlobalMousePosition()
+                    );
+                }
+            }
+
+            return;
+        }
+
+        if (mouse.ButtonIndex == MouseButton.Right &&
+            mouse.Pressed &&
+            IsPlacing)
+        {
+            CancelPlacement();
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    private void SelectOrClearAt(Vector2 worldPosition)
+    {
+        Vector2I cell =
+            _grid.WorldToGrid(worldPosition);
+
+        Building? building =
+            _grid.GetBuildingAt(cell);
+
+        if (building == null)
+        {
+            _selection.ClearSelection();
+            return;
+        }
+
+        _selection.Select(building);
+    }
+
+    public void BeginMiningDrill() =>
+        BeginPlacement("mining_drill");
+
+    public void BeginStorage() =>
+        BeginPlacement("storage");
+
+    public void BeginSmelter() =>
+        BeginPlacement("smelter");
+
+    public void BeginPowerGenerator() =>
+        BeginPlacement("power_generator");
 
     public void BeginMoveSelected()
     {
-        Building? building = _selection.SelectedBuilding;
+        Building? building =
+            _selection.SelectedBuilding;
 
         if (building == null ||
             building.BuildingId == "main_core")
@@ -153,14 +311,29 @@ public partial class PlacementManager : Node2D
         building.Visible = false;
 
         _selectedId = building.BuildingId;
+
+        // Start the preview at the building's old position.
+        _touchWorldPosition =
+            _grid.GridToWorldCentered(
+                _movingOriginalOrigin,
+                building.GridSize
+            );
+
+        _hasTouchWorldPosition = true;
+
         CreatePreview();
+
+        MessageRequested?.Invoke(
+            "Drag the building and release to place it."
+        );
 
         PlacementModeChanged?.Invoke(true);
     }
 
     public void DeleteSelected()
     {
-        Building? building = _selection.SelectedBuilding;
+        Building? building =
+            _selection.SelectedBuilding;
 
         if (building == null ||
             building.BuildingId == "main_core")
@@ -172,8 +345,14 @@ public partial class PlacementManager : Node2D
             building
         );
 
-        _resources.UnregisterBuilding(building.BuildingId);
-        _resources.RefundBuilding(building.BuildingId, 0.5);
+        _resources.UnregisterBuilding(
+            building.BuildingId
+        );
+
+        _resources.RefundBuilding(
+            building.BuildingId,
+            0.5
+        );
 
         _selection.ClearSelection();
         building.QueueFree();
@@ -194,7 +373,9 @@ public partial class PlacementManager : Node2D
         if (_movingBuilding != null)
         {
             _movingBuilding.Visible = true;
-            _movingBuilding.GridOrigin = _movingOriginalOrigin;
+            _movingBuilding.GridOrigin =
+                _movingOriginalOrigin;
+
             _movingBuilding.GlobalPosition =
                 _grid.GridToWorldCentered(
                     _movingOriginalOrigin,
@@ -211,6 +392,9 @@ public partial class PlacementManager : Node2D
         }
 
         _selectedId = "";
+        _touchPlacementActive = false;
+        _hasTouchWorldPosition = false;
+
         PlacementModeChanged?.Invoke(false);
     }
 
@@ -220,6 +404,8 @@ public partial class PlacementManager : Node2D
         _selection.ClearSelection();
 
         _selectedId = buildingId;
+        _hasTouchWorldPosition = false;
+
         CreatePreview();
 
         if (!_resources.CanAfford(buildingId))
@@ -241,16 +427,17 @@ public partial class PlacementManager : Node2D
         BuildingDefinition def =
             BuildingCatalog.Get(_selectedId);
 
-        _preview = CreateBuildingNode(def);
+        _preview =
+            CreateBuildingNode(def);
 
-        // Preview never participates in selection/input.
         _preview.InputEnabled = false;
         _preview.ZIndex = 1000;
 
         AddChild(_preview);
     }
 
-    private void ConfirmCurrentPlacement()
+    private void ConfirmPlacementAt(
+        Vector2 worldPosition)
     {
         if (string.IsNullOrEmpty(_selectedId))
             return;
@@ -258,23 +445,28 @@ public partial class PlacementManager : Node2D
         BuildingDefinition def =
             BuildingCatalog.Get(_selectedId);
 
-        Vector2I origin = GetCurrentGridOrigin();
+        Vector2I origin =
+            _grid.WorldToGrid(worldPosition);
 
         if (!_grid.CanPlace(
                 origin,
                 def.GridSize,
                 _movingBuilding))
         {
-            MessageRequested?.Invoke("Cannot build here.");
+            MessageRequested?.Invoke(
+                "Cannot build here."
+            );
             return;
         }
 
         if (_movingBuilding != null)
         {
-            Building building = _movingBuilding;
+            Building building =
+                _movingBuilding;
 
             building.Visible = true;
             building.GridOrigin = origin;
+
             building.GlobalPosition =
                 _grid.GridToWorldCentered(
                     origin,
@@ -289,31 +481,45 @@ public partial class PlacementManager : Node2D
 
             _movingBuilding = null;
 
-            if (_preview != null)
-            {
-                _preview.QueueFree();
-                _preview = null;
-            }
-
+            _preview?.QueueFree();
+            _preview = null;
             _selectedId = "";
 
-            _selection.Select(building);
+            _hasTouchWorldPosition = false;
+            _touchPlacementActive = false;
+
+            _selection.ClearSelection();
             PlacementModeChanged?.Invoke(false);
+
+            MessageRequested?.Invoke(
+                "Building moved."
+            );
+
             return;
         }
 
-        if (!_resources.TryPayForBuilding(_selectedId))
+        if (!_resources.TryPayForBuilding(
+                _selectedId))
         {
-            MessageRequested?.Invoke("Not enough resources.");
+            MessageRequested?.Invoke(
+                "Not enough resources."
+            );
             return;
         }
 
         Building? placed =
-            SpawnBuilding(_selectedId, origin, true);
+            SpawnBuilding(
+                _selectedId,
+                origin,
+                true
+            );
 
         if (placed == null)
         {
-            _resources.RefundBuilding(_selectedId, 1.0);
+            _resources.RefundBuilding(
+                _selectedId,
+                1.0
+            );
             return;
         }
 
@@ -321,8 +527,6 @@ public partial class PlacementManager : Node2D
             $"{def.DisplayName} constructed."
         );
 
-        // Keep same building selected for rapid building,
-        // unless it can no longer be afforded.
         if (!_resources.CanAfford(_selectedId))
             CancelPlacement();
     }
@@ -335,7 +539,9 @@ public partial class PlacementManager : Node2D
         BuildingDefinition def =
             BuildingCatalog.Get(buildingId);
 
-        if (!_grid.CanPlace(origin, def.GridSize))
+        if (!_grid.CanPlace(
+                origin,
+                def.GridSize))
             return null;
 
         Building building =
@@ -343,13 +549,12 @@ public partial class PlacementManager : Node2D
 
         building.InputEnabled = true;
         building.GridOrigin = origin;
+
         building.GlobalPosition =
             _grid.GridToWorldCentered(
                 origin,
                 def.GridSize
             );
-
-        building.Selected += OnBuildingSelected;
 
         _buildings.AddChild(building);
 
@@ -360,7 +565,9 @@ public partial class PlacementManager : Node2D
         );
 
         if (registerResources)
-            _resources.RegisterBuilding(buildingId);
+            _resources.RegisterBuilding(
+                buildingId
+            );
 
         return building;
     }
@@ -377,18 +584,14 @@ public partial class PlacementManager : Node2D
         };
     }
 
-    private Vector2I GetCurrentGridOrigin()
+    private Vector2 ScreenToWorld(
+        Vector2 screenPosition)
     {
-        return _grid.WorldToGrid(
-            GetGlobalMousePosition()
-        );
-    }
+        Transform2D inverse =
+            GetViewport()
+                .GetCanvasTransform()
+                .AffineInverse();
 
-    private void OnBuildingSelected(Building building)
-    {
-        if (IsPlacing)
-            return;
-
-        _selection.Select(building);
+        return inverse * screenPosition;
     }
 }
