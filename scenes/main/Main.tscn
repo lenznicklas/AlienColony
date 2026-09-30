@@ -1,0 +1,98 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/systems/GridManager.cs" id="1_grid"]
+[ext_resource type="Script" path="res://scripts/world/WorldGrid.cs" id="2_world"]
+[ext_resource type="Script" path="res://scripts/systems/PlacementManager.cs" id="3_place"]
+[ext_resource type="Script" path="res://scripts/camera/CameraController.cs" id="4_camera"]
+[ext_resource type="Script" path="res://scripts/ui/StarterUi.cs" id="5_ui"]
+
+[node name="Main" type="Node2D"]
+
+[node name="GridManager" type="Node" parent="."]
+script = ExtResource("1_grid")
+
+[node name="WorldGrid" type="Node2D" parent="."]
+script = ExtResource("2_world")
+
+[node name="Buildings" type="Node2D" parent="."]
+
+[node name="PlacementManager" type="Node2D" parent="."]
+script = ExtResource("3_place")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(960, 960)
+script = ExtResource("4_camera")
+
+[node name="UI" type="CanvasLayer" parent="."]
+script = ExtResource("5_ui")
+
+[node name="TitlePanel" type="PanelContainer" parent="UI"]
+offset_left = 18.0
+offset_top = 18.0
+offset_right = 372.0
+offset_bottom = 82.0
+
+[node name="Margin" type="MarginContainer" parent="UI/TitlePanel"]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 10
+
+[node name="Text" type="VBoxContainer" parent="UI/TitlePanel/Margin"]
+
+[node name="Title" type="Label" parent="UI/TitlePanel/Margin/Text"]
+text = "ALIEN COLONY"
+
+[node name="Help" type="Label" parent="UI/TitlePanel/Margin/Text"]
+text = "MMB drag • wheel zoom • arrows move • 1/2 build"
+
+[node name="BottomBar" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -112.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 1
+
+[node name="Panel" type="PanelContainer" parent="UI/BottomBar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -315.0
+offset_top = -42.0
+offset_right = 315.0
+offset_bottom = 42.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Margin" type="MarginContainer" parent="UI/BottomBar/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="Row" type="HBoxContainer" parent="UI/BottomBar/Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="MiningDrill" type="Button" parent="UI/BottomBar/Panel/Margin/Row"]
+custom_minimum_size = Vector2(190, 54)
+layout_mode = 2
+text = "Mining Drill [1]"
+
+[node name="Storage" type="Button" parent="UI/BottomBar/Panel/Margin/Row"]
+custom_minimum_size = Vector2(190, 54)
+layout_mode = 2
+text = "Storage [2]"
+
+[node name="Cancel" type="Button" parent="UI/BottomBar/Panel/Margin/Row"]
+custom_minimum_size = Vector2(190, 54)
+layout_mode = 2
+text = "Cancel [Esc]"
