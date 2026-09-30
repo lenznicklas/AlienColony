@@ -1,10 +1,11 @@
 using Godot;
+using System;
 
 namespace AlienColony.Buildings;
 
 public partial class Building : Node2D
 {
-    [Signal] public delegate void SelectedEventHandler(Building building);
+    public event Action<Building>? Selected;
 
     [Export] public string BuildingId { get; set; } = "building";
     [Export] public string DisplayName { get; set; } = "Building";
@@ -15,10 +16,11 @@ public partial class Building : Node2D
     public bool IsSelected { get; private set; }
 
     private Sprite2D? _sprite;
+    private bool _textureLoaded;
 
     public override void _Ready()
     {
-        CreateSprite();
+        LoadBuildingTexture();
         QueueRedraw();
     }
 
@@ -36,7 +38,7 @@ public partial class Building : Node2D
         if (!bounds.HasPoint(local))
             return;
 
-        EmitSignal(SignalName.Selected, this);
+        Selected?.Invoke(this);
         GetViewport().SetInputAsHandled();
     }
 
@@ -51,65 +53,57 @@ public partial class Building : Node2D
         Vector2 pixelSize = new(GridSize.X * CellSize, GridSize.Y * CellSize);
         Rect2 footprint = new(-pixelSize * 0.5f, pixelSize);
 
+        if (!_textureLoaded)
+        {
+            DrawRect(footprint.Grow(-5), new Color("#798c84"), true);
+            DrawRect(footprint.Grow(-5), Colors.White, false, 3f);
+        }
+
         if (IsSelected)
         {
-            DrawRect(
-                footprint.Grow(5),
-                new Color(0.25f, 0.9f, 1f, 0.18f),
-                true
-            );
-            DrawRect(
-                footprint.Grow(5),
-                new Color("#63e2ff"),
-                false,
-                4f
-            );
+            DrawRect(footprint.Grow(6), new Color(0.25f, 0.9f, 1f, 0.18f), true);
+            DrawRect(footprint.Grow(6), new Color("#63e2ff"), false, 4f);
         }
     }
 
-    private void CreateSprite()
+    private void LoadBuildingTexture()
     {
-        string path = GetTexturePath();
-
-        if (!ResourceLoader.Exists(path))
+        if (!BuildingCatalog.TryGet(BuildingId, out BuildingDefinition definition))
+        {
+            GD.PushWarning($"Unknown building id: {BuildingId}");
             return;
+        }
 
-        Texture2D texture = GD.Load<Texture2D>(path);
+        Texture2D? texture = GD.Load<Texture2D>(definition.TexturePath);
+        if (texture == null)
+        {
+            GD.PushError($"Could not load building texture: {definition.TexturePath}");
+            return;
+        }
+
+        Vector2 textureSize = texture.GetSize();
+        if (textureSize.X <= 0 || textureSize.Y <= 0)
+            return;
 
         _sprite = new Sprite2D
         {
+            Name = "BuildingSprite",
             Texture = texture,
-            Centered = true
+            Centered = true,
+            ZIndex = 10
         };
 
-        // Generated source assets are large. Scale every building into a predictable
-        // visual box while keeping its transparent proportions.
-        Vector2 target = new(
-            GridSize.X * CellSize * 1.35f,
-            GridSize.Y * CellSize * 1.55f
-        );
-
-        Vector2 texSize = texture.GetSize();
-        float scale = Mathf.Min(target.X / texSize.X, target.Y / texSize.Y);
-        _sprite.Scale = Vector2.One * scale;
-
-        // Lift the art slightly so its base sits more naturally on the footprint.
-        _sprite.Position = new Vector2(0, -CellSize * 0.18f);
         AddChild(_sprite);
-    }
 
-    private string GetTexturePath()
-    {
-        return BuildingId switch
-        {
-            "main_core" => "res://assets/buildings/main_core.png",
-            "mining_drill" => "res://assets/buildings/mining_drill.png",
-            "storage" => "res://assets/buildings/storage.png",
-            "smelter" => "res://assets/buildings/smelter.png",
-            "power_generator" => "res://assets/buildings/power_generator.png",
-            "wall" => "res://assets/buildings/wall.png",
-            "turret" => "res://assets/buildings/turret.png",
-            _ => ""
-        };
+        float targetWidth = GridSize.X * CellSize * 1.25f;
+        float targetHeight = GridSize.Y * CellSize * 1.70f;
+        float scale = Mathf.Max(targetWidth / textureSize.X, targetHeight / textureSize.Y);
+        scale = Mathf.Clamp(scale, 0.02f, 4.0f);
+
+        _sprite.Scale = Vector2.One * scale;
+        _sprite.Position = new Vector2(0, -GridSize.Y * CellSize * 0.20f);
+
+        _textureLoaded = true;
+        QueueRedraw();
     }
 }

@@ -1,22 +1,28 @@
 using Godot;
+using System;
+using AlienColony.Buildings;
 
 namespace AlienColony.Systems;
 
 public partial class ResourceManager : Node
 {
-    [Signal] public delegate void ResourcesChangedEventHandler();
+    public event Action? ResourcesChanged;
 
-    public double Ore { get; private set; } = 40;
-    public double Metal { get; private set; } = 20;
-    public double Energy { get; private set; } = 0;
+    public double Ore { get; private set; } = 80;
+    public double Metal { get; private set; } = 120;
 
-    public int OreCapacity { get; private set; } = 200;
-    public int MetalCapacity { get; private set; } = 100;
+    public int OreCapacity { get; private set; } = 250;
+    public int MetalCapacity { get; private set; } = 200;
 
     public int MiningDrills { get; private set; }
     public int Smelters { get; private set; }
     public int PowerGenerators { get; private set; }
     public int Storages { get; private set; }
+
+    public int PowerProduction { get; private set; } = 12;
+    public int PowerDemand { get; private set; }
+    public int PoweredMiningDrills { get; private set; }
+    public int PoweredSmelters { get; private set; }
 
     private double _tickAccumulator;
 
@@ -31,6 +37,36 @@ public partial class ResourceManager : Node
         }
     }
 
+    public bool CanAfford(string buildingId)
+    {
+        BuildingDefinition def = BuildingCatalog.Get(buildingId);
+        return Ore >= def.OreCost && Metal >= def.MetalCost;
+    }
+
+    public bool TryPayForBuilding(string buildingId)
+    {
+        if (!CanAfford(buildingId))
+            return false;
+
+        BuildingDefinition def = BuildingCatalog.Get(buildingId);
+
+        Ore -= def.OreCost;
+        Metal -= def.MetalCost;
+
+        ResourcesChanged?.Invoke();
+        return true;
+    }
+
+    public void RefundBuilding(string buildingId, double fraction = 0.5)
+    {
+        BuildingDefinition def = BuildingCatalog.Get(buildingId);
+
+        Ore = Math.Min(OreCapacity, Ore + def.OreCost * fraction);
+        Metal = Math.Min(MetalCapacity, Metal + def.MetalCost * fraction);
+
+        ResourcesChanged?.Invoke();
+    }
+
     public void RegisterBuilding(string buildingId)
     {
         switch (buildingId)
@@ -38,19 +74,23 @@ public partial class ResourceManager : Node
             case "mining_drill":
                 MiningDrills++;
                 break;
+
             case "smelter":
                 Smelters++;
                 break;
+
             case "power_generator":
                 PowerGenerators++;
                 break;
+
             case "storage":
                 Storages++;
                 RecalculateCapacity();
                 break;
         }
 
-        EmitSignal(SignalName.ResourcesChanged);
+        RecalculatePower();
+        ResourcesChanged?.Invoke();
     }
 
     public void UnregisterBuilding(string buildingId)
@@ -58,51 +98,87 @@ public partial class ResourceManager : Node
         switch (buildingId)
         {
             case "mining_drill":
-                MiningDrills = Mathf.Max(0, MiningDrills - 1);
+                MiningDrills = Math.Max(0, MiningDrills - 1);
                 break;
+
             case "smelter":
-                Smelters = Mathf.Max(0, Smelters - 1);
+                Smelters = Math.Max(0, Smelters - 1);
                 break;
+
             case "power_generator":
-                PowerGenerators = Mathf.Max(0, PowerGenerators - 1);
+                PowerGenerators = Math.Max(0, PowerGenerators - 1);
                 break;
+
             case "storage":
-                Storages = Mathf.Max(0, Storages - 1);
+                Storages = Math.Max(0, Storages - 1);
                 RecalculateCapacity();
                 break;
         }
 
-        EmitSignal(SignalName.ResourcesChanged);
+        RecalculatePower();
+        ResourcesChanged?.Invoke();
+    }
+
+    public string GetPowerStatus(string buildingId)
+    {
+        return buildingId switch
+        {
+            "main_core" => "Power source",
+            "power_generator" => "+20 MW",
+            "storage" => "No power required",
+            "mining_drill" => $"{PoweredMiningDrills}/{MiningDrills} drills powered",
+            "smelter" => $"{PoweredSmelters}/{Smelters} smelters powered",
+            _ => ""
+        };
     }
 
     private void RecalculateCapacity()
     {
-        OreCapacity = 200 + Storages * 200;
-        MetalCapacity = 100 + Storages * 150;
-        Ore = Mathf.Min(Ore, OreCapacity);
-        Metal = Mathf.Min(Metal, MetalCapacity);
+        OreCapacity = 250 + Storages * 250;
+        MetalCapacity = 200 + Storages * 200;
+
+        Ore = Math.Min(Ore, OreCapacity);
+        Metal = Math.Min(Metal, MetalCapacity);
+    }
+
+    private void RecalculatePower()
+    {
+        // Main Core provides the initial 12 MW.
+        PowerProduction = 12 + PowerGenerators * 20;
+
+        int drillDemand = MiningDrills * 4;
+        int smelterDemand = Smelters * 8;
+
+        PowerDemand = drillDemand + smelterDemand;
+
+        int available = PowerProduction;
+
+        // Simple automatic allocation:
+        // 1. Mining first, so the base never completely starves.
+        // 2. Smelting gets the remaining power.
+        PoweredMiningDrills = Math.Min(MiningDrills, available / 4);
+        available -= PoweredMiningDrills * 4;
+
+        PoweredSmelters = Math.Min(Smelters, available / 8);
     }
 
     private void SimulateOneSecond()
     {
-        // Early prototype rates:
-        // Drill: +1 ore / sec
-        // Generator: +5 energy / sec
-        // Smelter: consumes 2 ore and 2 energy / sec -> +1 metal / sec.
-        Ore = Mathf.Min(OreCapacity, Ore + MiningDrills);
-        Energy += PowerGenerators * 5.0;
+        RecalculatePower();
 
-        int activeSmelters = Smelters;
-        for (int i = 0; i < activeSmelters; i++)
+        // Each powered drill produces 2 ore/sec.
+        Ore = Math.Min(OreCapacity, Ore + PoweredMiningDrills * 2.0);
+
+        // Each powered smelter turns 3 ore -> 1 metal/sec.
+        for (int i = 0; i < PoweredSmelters; i++)
         {
-            if (Ore < 2 || Energy < 2 || Metal >= MetalCapacity)
+            if (Ore < 3 || Metal >= MetalCapacity)
                 break;
 
-            Ore -= 2;
-            Energy -= 2;
-            Metal = Mathf.Min(MetalCapacity, Metal + 1);
+            Ore -= 3;
+            Metal = Math.Min(MetalCapacity, Metal + 1);
         }
 
-        EmitSignal(SignalName.ResourcesChanged);
+        ResourcesChanged?.Invoke();
     }
 }

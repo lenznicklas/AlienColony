@@ -60,32 +60,32 @@ theme_override_constants/margin_bottom = 12
 
 [node name="Resources" type="HBoxContainer" parent="UI/TopBar/Panel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 34
+theme_override_constants/separation = 30
 
 [node name="Title" type="Label" parent="UI/TopBar/Panel/Margin/Resources"]
-custom_minimum_size = Vector2(190, 0)
+custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
 text = "ALIEN COLONY"
 
 [node name="Ore" type="Label" parent="UI/TopBar/Panel/Margin/Resources"]
-custom_minimum_size = Vector2(180, 0)
+custom_minimum_size = Vector2(190, 0)
 layout_mode = 2
 text = "ORE"
 
 [node name="Metal" type="Label" parent="UI/TopBar/Panel/Margin/Resources"]
-custom_minimum_size = Vector2(180, 0)
+custom_minimum_size = Vector2(190, 0)
 layout_mode = 2
 text = "METAL"
 
-[node name="Energy" type="Label" parent="UI/TopBar/Panel/Margin/Resources"]
-custom_minimum_size = Vector2(180, 0)
+[node name="Power" type="Label" parent="UI/TopBar/Panel/Margin/Resources"]
+custom_minimum_size = Vector2(240, 0)
 layout_mode = 2
-text = "ENERGY"
+text = "POWER"
 
 [node name="Help" type="Label" parent="UI/TopBar/Panel/Margin/Resources"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "MMB drag • wheel zoom • 1-4 build • Del delete"
+text = "1-4 build • MMB drag • wheel zoom"
 horizontal_alignment = 2
 
 [node name="BuildBar" type="Control" parent="UI"]
@@ -94,7 +94,7 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -116.0
+offset_top = -128.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 1
@@ -106,10 +106,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -515.0
-offset_top = -43.0
-offset_right = 515.0
-offset_bottom = 43.0
+offset_left = -550.0
+offset_top = -50.0
+offset_right = 550.0
+offset_bottom = 50.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -125,36 +125,41 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="MiningDrill" type="Button" parent="UI/BuildBar/Panel/Margin/Row"]
-custom_minimum_size = Vector2(190, 54)
+custom_minimum_size = Vector2(205, 68)
 layout_mode = 2
-text = "Mining Drill [1]"
+text = "Mining Drill [1]
+25 Metal"
 
 [node name="Storage" type="Button" parent="UI/BuildBar/Panel/Margin/Row"]
-custom_minimum_size = Vector2(170, 54)
+custom_minimum_size = Vector2(185, 68)
 layout_mode = 2
-text = "Storage [2]"
+text = "Storage [2]
+30 Metal"
 
 [node name="Smelter" type="Button" parent="UI/BuildBar/Panel/Margin/Row"]
-custom_minimum_size = Vector2(170, 54)
+custom_minimum_size = Vector2(205, 68)
 layout_mode = 2
-text = "Smelter [3]"
+text = "Smelter [3]
+20 Ore + 40 Metal"
 
 [node name="PowerGenerator" type="Button" parent="UI/BuildBar/Panel/Margin/Row"]
-custom_minimum_size = Vector2(210, 54)
+custom_minimum_size = Vector2(230, 68)
 layout_mode = 2
-text = "Power Generator [4]"
+text = "Power Generator [4]
+15 Ore + 35 Metal"
 
 [node name="Cancel" type="Button" parent="UI/BuildBar/Panel/Margin/Row"]
-custom_minimum_size = Vector2(170, 54)
+custom_minimum_size = Vector2(170, 68)
 layout_mode = 2
-text = "Cancel [Esc]"
+text = "Cancel
+[Esc]"
 
 [node name="SelectionPanel" type="PanelContainer" parent="UI"]
 visible = false
 offset_left = 18.0
 offset_top = 96.0
-offset_right = 352.0
-offset_bottom = 205.0
+offset_right = 390.0
+offset_bottom = 260.0
 
 [node name="Margin" type="MarginContainer" parent="UI/SelectionPanel"]
 layout_mode = 2
@@ -171,16 +176,31 @@ theme_override_constants/separation = 8
 layout_mode = 2
 text = "Building"
 
+[node name="Details" type="Label" parent="UI/SelectionPanel/Margin/Column"]
+layout_mode = 2
+text = "Details"
+
 [node name="Actions" type="HBoxContainer" parent="UI/SelectionPanel/Margin/Column"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="Move" type="Button" parent="UI/SelectionPanel/Margin/Column/Actions"]
-custom_minimum_size = Vector2(130, 44)
+custom_minimum_size = Vector2(145, 44)
 layout_mode = 2
 text = "Move"
 
 [node name="Delete" type="Button" parent="UI/SelectionPanel/Margin/Column/Actions"]
-custom_minimum_size = Vector2(130, 44)
+custom_minimum_size = Vector2(145, 44)
 layout_mode = 2
-text = "Delete"
+text = "Dismantle"
+
+[node name="Message" type="Label" parent="UI"]
+visible = false
+layout_mode = 0
+offset_left = 420.0
+offset_top = 92.0
+offset_right = 860.0
+offset_bottom = 136.0
+text = "Message"
+horizontal_alignment = 1
+vertical_alignment = 1

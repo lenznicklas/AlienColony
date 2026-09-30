@@ -1,11 +1,12 @@
 using Godot;
+using System;
 using AlienColony.Buildings;
 
 namespace AlienColony.Systems;
 
 public partial class SelectionManager : Node
 {
-    [Signal] public delegate void SelectionChangedEventHandler(Building? building);
+    public event Action<Building?>? SelectionChanged;
 
     public Building? SelectedBuilding { get; private set; }
 
@@ -18,13 +19,13 @@ public partial class SelectionManager : Node
         SelectedBuilding = building;
         SelectedBuilding.SetSelected(true);
 
-        EmitSignal(SignalName.SelectionChanged, SelectedBuilding);
+        SelectionChanged?.Invoke(SelectedBuilding);
     }
 
     public void ClearSelection()
     {
         SelectedBuilding?.SetSelected(false);
         SelectedBuilding = null;
-        EmitSignal(SignalName.SelectionChanged, Variant.From<Building?>(null));
+        SelectionChanged?.Invoke(null);
     }
 }
