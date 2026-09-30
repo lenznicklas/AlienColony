@@ -1,5 +1,6 @@
 using Godot;
 using System.Collections.Generic;
+using AlienColony.Buildings;
 
 namespace AlienColony.Systems;
 
@@ -8,7 +9,7 @@ public partial class GridManager : Node
     [Export] public int CellSize { get; set; } = 64;
     [Export] public Vector2I MapSize { get; set; } = new(30, 30);
 
-    private readonly Dictionary<Vector2I, Node2D> _occupiedCells = new();
+    private readonly Dictionary<Vector2I, Building> _occupiedCells = new();
 
     public Vector2I WorldToGrid(Vector2 worldPosition)
     {
@@ -42,7 +43,7 @@ public partial class GridManager : Node
                cell.Y < MapSize.Y;
     }
 
-    public bool CanPlace(Vector2I origin, Vector2I size)
+    public bool CanPlace(Vector2I origin, Vector2I size, Building? ignoredBuilding = null)
     {
         for (int x = 0; x < size.X; x++)
         {
@@ -50,7 +51,11 @@ public partial class GridManager : Node
             {
                 Vector2I cell = origin + new Vector2I(x, y);
 
-                if (!IsInsideMap(cell) || _occupiedCells.ContainsKey(cell))
+                if (!IsInsideMap(cell))
+                    return false;
+
+                if (_occupiedCells.TryGetValue(cell, out Building? occupant) &&
+                    occupant != ignoredBuilding)
                     return false;
             }
         }
@@ -58,24 +63,34 @@ public partial class GridManager : Node
         return true;
     }
 
-    public void OccupyArea(Vector2I origin, Vector2I size, Node2D building)
+    public Building? GetBuildingAt(Vector2I cell)
+    {
+        return _occupiedCells.GetValueOrDefault(cell);
+    }
+
+    public void OccupyArea(Vector2I origin, Vector2I size, Building building)
     {
         for (int x = 0; x < size.X; x++)
         {
             for (int y = 0; y < size.Y; y++)
-            {
                 _occupiedCells[origin + new Vector2I(x, y)] = building;
-            }
         }
     }
 
-    public void FreeArea(Vector2I origin, Vector2I size)
+    public void FreeArea(Vector2I origin, Vector2I size, Building? onlyBuilding = null)
     {
         for (int x = 0; x < size.X; x++)
         {
             for (int y = 0; y < size.Y; y++)
             {
-                _occupiedCells.Remove(origin + new Vector2I(x, y));
+                Vector2I cell = origin + new Vector2I(x, y);
+
+                if (onlyBuilding == null ||
+                    (_occupiedCells.TryGetValue(cell, out Building? occupant) &&
+                     occupant == onlyBuilding))
+                {
+                    _occupiedCells.Remove(cell);
+                }
             }
         }
     }
