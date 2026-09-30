@@ -17,7 +17,6 @@ public partial class PlacementManager : Node2D
     private Building? _preview;
     private Building? _movingBuilding;
     private Vector2I _movingOriginalOrigin;
-
     private string _selectedId = "";
 
     public bool IsPlacing => _preview != null;
@@ -30,11 +29,14 @@ public partial class PlacementManager : Node2D
         _buildings = GetNode<Node2D>("../Buildings");
 
         SpawnBuilding("main_core", new Vector2I(13, 13), false);
+
+        // We need guaranteed input delivery for placement.
+        SetProcessInput(true);
     }
 
     public override void _Process(double delta)
     {
-        if (_preview == null)
+        if (_preview == null || string.IsNullOrEmpty(_selectedId))
             return;
 
         BuildingDefinition def = BuildingCatalog.Get(_selectedId);
@@ -51,12 +53,13 @@ public partial class PlacementManager : Node2D
             _resources.CanAfford(_selectedId);
 
         _preview.Modulate = valid && affordable
-            ? new Color(0.55f, 1f, 0.65f, 0.74f)
-            : new Color(1f, 0.35f, 0.35f, 0.74f);
+            ? new Color(0.55f, 1f, 0.65f, 0.78f)
+            : new Color(1f, 0.30f, 0.30f, 0.78f);
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Input(InputEvent @event)
     {
+        // Keyboard shortcuts always work.
         if (@event is InputEventKey key &&
             key.Pressed &&
             !key.Echo)
@@ -65,41 +68,61 @@ public partial class PlacementManager : Node2D
             {
                 case Key.Key1:
                     BeginMiningDrill();
-                    break;
+                    GetViewport().SetInputAsHandled();
+                    return;
+
                 case Key.Key2:
                     BeginStorage();
-                    break;
+                    GetViewport().SetInputAsHandled();
+                    return;
+
                 case Key.Key3:
                     BeginSmelter();
-                    break;
+                    GetViewport().SetInputAsHandled();
+                    return;
+
                 case Key.Key4:
                     BeginPowerGenerator();
-                    break;
+                    GetViewport().SetInputAsHandled();
+                    return;
+
                 case Key.Escape:
-                    CancelPlacement();
-                    break;
+                    if (IsPlacing)
+                    {
+                        CancelPlacement();
+                        GetViewport().SetInputAsHandled();
+                    }
+                    return;
+
                 case Key.Delete:
-                    DeleteSelected();
-                    break;
+                    if (!IsPlacing)
+                    {
+                        DeleteSelected();
+                        GetViewport().SetInputAsHandled();
+                    }
+                    return;
             }
         }
 
-        if (_preview == null)
+        if (!IsPlacing)
             return;
 
-        if (@event is not InputEventMouseButton mouse ||
-            !mouse.Pressed)
-            return;
+        // While placing, the placement system owns left/right mouse clicks.
+        if (@event is InputEventMouseButton mouse && mouse.Pressed)
+        {
+            if (mouse.ButtonIndex == MouseButton.Left)
+            {
+                ConfirmCurrentPlacement();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
 
-        if (mouse.ButtonIndex == MouseButton.Left)
-        {
-            ConfirmCurrentPlacement();
-            GetViewport().SetInputAsHandled();
-        }
-        else if (mouse.ButtonIndex == MouseButton.Right)
-        {
-            CancelPlacement();
-            GetViewport().SetInputAsHandled();
+            if (mouse.ButtonIndex == MouseButton.Right)
+            {
+                CancelPlacement();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
         }
     }
 
@@ -162,21 +185,21 @@ public partial class PlacementManager : Node2D
 
     public void CancelPlacement()
     {
-        _preview?.QueueFree();
-        _preview = null;
+        if (_preview != null)
+        {
+            _preview.QueueFree();
+            _preview = null;
+        }
 
         if (_movingBuilding != null)
         {
             _movingBuilding.Visible = true;
-
+            _movingBuilding.GridOrigin = _movingOriginalOrigin;
             _movingBuilding.GlobalPosition =
                 _grid.GridToWorldCentered(
                     _movingOriginalOrigin,
                     _movingBuilding.GridSize
                 );
-
-            _movingBuilding.GridOrigin =
-                _movingOriginalOrigin;
 
             _grid.OccupyArea(
                 _movingOriginalOrigin,
@@ -197,6 +220,7 @@ public partial class PlacementManager : Node2D
         _selection.ClearSelection();
 
         _selectedId = buildingId;
+        CreatePreview();
 
         if (!_resources.CanAfford(buildingId))
         {
@@ -209,7 +233,6 @@ public partial class PlacementManager : Node2D
             );
         }
 
-        CreatePreview();
         PlacementModeChanged?.Invoke(true);
     }
 
@@ -220,7 +243,7 @@ public partial class PlacementManager : Node2D
 
         _preview = CreateBuildingNode(def);
 
-        // CRITICAL: preview must not eat the click that places it.
+        // Preview never participates in selection/input.
         _preview.InputEnabled = false;
         _preview.ZIndex = 1000;
 
@@ -229,6 +252,9 @@ public partial class PlacementManager : Node2D
 
     private void ConfirmCurrentPlacement()
     {
+        if (string.IsNullOrEmpty(_selectedId))
+            return;
+
         BuildingDefinition def =
             BuildingCatalog.Get(_selectedId);
 
@@ -249,7 +275,6 @@ public partial class PlacementManager : Node2D
 
             building.Visible = true;
             building.GridOrigin = origin;
-
             building.GlobalPosition =
                 _grid.GridToWorldCentered(
                     origin,
@@ -264,8 +289,12 @@ public partial class PlacementManager : Node2D
 
             _movingBuilding = null;
 
-            _preview?.QueueFree();
-            _preview = null;
+            if (_preview != null)
+            {
+                _preview.QueueFree();
+                _preview = null;
+            }
+
             _selectedId = "";
 
             _selection.Select(building);
@@ -292,11 +321,10 @@ public partial class PlacementManager : Node2D
             $"{def.DisplayName} constructed."
         );
 
-        // Keep build mode active only while the player can still afford it.
+        // Keep same building selected for rapid building,
+        // unless it can no longer be afforded.
         if (!_resources.CanAfford(_selectedId))
-        {
             CancelPlacement();
-        }
     }
 
     private Building? SpawnBuilding(
@@ -315,7 +343,6 @@ public partial class PlacementManager : Node2D
 
         building.InputEnabled = true;
         building.GridOrigin = origin;
-
         building.GlobalPosition =
             _grid.GridToWorldCentered(
                 origin,
@@ -359,7 +386,7 @@ public partial class PlacementManager : Node2D
 
     private void OnBuildingSelected(Building building)
     {
-        if (_preview != null)
+        if (IsPlacing)
             return;
 
         _selection.Select(building);

@@ -9,14 +9,13 @@ public partial class CameraController : Camera2D
     [Export] public float MinZoom { get; set; } = 0.45f;
     [Export] public float MaxZoom { get; set; } = 2.0f;
     [Export] public float KeyboardSpeed { get; set; } = 650f;
-    [Export] public float DragThreshold { get; set; } = 5f;
+    [Export] public float DragThreshold { get; set; } = 4f;
 
     private PlacementManager _placement = null!;
 
-    private bool _leftPressed;
-    private bool _rightPressed;
-    private bool _middlePressed;
+    private bool _mouseHeld;
     private bool _dragging;
+    private MouseButton _heldButton;
 
     private Vector2 _pressPosition;
     private Vector2 _lastMousePosition;
@@ -25,6 +24,16 @@ public partial class CameraController : Camera2D
     {
         _placement =
             GetNode<PlacementManager>("../PlacementManager");
+
+        _placement.PlacementModeChanged += OnPlacementModeChanged;
+
+        SetProcessInput(true);
+    }
+
+    public override void _ExitTree()
+    {
+        if (_placement != null)
+            _placement.PlacementModeChanged -= OnPlacementModeChanged;
     }
 
     public override void _Process(double delta)
@@ -46,7 +55,7 @@ public partial class CameraController : Camera2D
         }
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Input(InputEvent @event)
     {
         if (@event is InputEventMouseButton button)
         {
@@ -66,95 +75,85 @@ public partial class CameraController : Camera2D
                 return;
             }
 
-            // During building placement, left click belongs entirely
-            // to PlacementManager.
-            if (button.ButtonIndex == MouseButton.Left)
+            bool supportedDragButton =
+                button.ButtonIndex == MouseButton.Left ||
+                button.ButtonIndex == MouseButton.Right ||
+                button.ButtonIndex == MouseButton.Middle;
+
+            if (!supportedDragButton)
+                return;
+
+            // Placement owns left/right click completely.
+            if (_placement.IsPlacing &&
+                (button.ButtonIndex == MouseButton.Left ||
+                 button.ButtonIndex == MouseButton.Right))
             {
-                if (_placement.IsPlacing)
-                    return;
-
-                _leftPressed = button.Pressed;
-
-                if (button.Pressed)
-                    BeginPotentialDrag(button.Position);
-                else
-                    EndDrag();
-
+                ResetDrag();
                 return;
             }
 
-            if (button.ButtonIndex == MouseButton.Right)
+            if (button.Pressed)
             {
-                // Right drag pans as well when not placing.
-                if (_placement.IsPlacing)
-                    return;
+                _mouseHeld = true;
+                _dragging = false;
+                _heldButton = button.ButtonIndex;
 
-                _rightPressed = button.Pressed;
-
-                if (button.Pressed)
-                    BeginPotentialDrag(button.Position);
-                else
-                    EndDrag();
-
-                return;
+                _pressPosition = button.Position;
+                _lastMousePosition = button.Position;
+            }
+            else if (_mouseHeld &&
+                     button.ButtonIndex == _heldButton)
+            {
+                ResetDrag();
             }
 
-            if (button.ButtonIndex == MouseButton.Middle)
-            {
-                _middlePressed = button.Pressed;
-
-                if (button.Pressed)
-                    BeginPotentialDrag(button.Position);
-                else
-                    EndDrag();
-
-                return;
-            }
+            return;
         }
 
-        if (@event is InputEventMouseMotion motion)
+        if (@event is not InputEventMouseMotion motion)
+            return;
+
+        if (!_mouseHeld)
+            return;
+
+        // If placement began after mouse down (e.g. clicking a UI button),
+        // kill the pending drag immediately.
+        if (_placement.IsPlacing &&
+            (_heldButton == MouseButton.Left ||
+             _heldButton == MouseButton.Right))
         {
-            bool held =
-                _leftPressed ||
-                _rightPressed ||
-                _middlePressed;
+            ResetDrag();
+            return;
+        }
 
-            if (!held)
+        if (!_dragging)
+        {
+            if (motion.Position.DistanceTo(_pressPosition) <
+                DragThreshold)
                 return;
 
-            if (!_dragging)
-            {
-                if (motion.Position.DistanceTo(_pressPosition) <
-                    DragThreshold)
-                    return;
-
-                _dragging = true;
-            }
-
-            Vector2 delta =
-                motion.Position - _lastMousePosition;
-
-            Position -= delta / Zoom.X;
-
-            _lastMousePosition =
-                motion.Position;
-
-            GetViewport().SetInputAsHandled();
+            _dragging = true;
         }
+
+        Vector2 delta =
+            motion.Position - _lastMousePosition;
+
+        Position -= delta / Zoom.X;
+
+        _lastMousePosition = motion.Position;
+
+        GetViewport().SetInputAsHandled();
     }
 
-    private void BeginPotentialDrag(Vector2 mousePosition)
+    private void OnPlacementModeChanged(bool active)
     {
-        _pressPosition = mousePosition;
-        _lastMousePosition = mousePosition;
-        _dragging = false;
+        if (active)
+            ResetDrag();
     }
 
-    private void EndDrag()
+    private void ResetDrag()
     {
-        _leftPressed = false;
-        _rightPressed = false;
-        _middlePressed = false;
+        _mouseHeld = false;
         _dragging = false;
     }
 

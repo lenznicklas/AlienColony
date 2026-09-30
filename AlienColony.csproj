@@ -2,5 +2,17 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <!--
+    Godot's Android custom-build folder contains COPIES of the game's C# source
+    files under android/build/.../assets/scripts.
+    The SDK-style C# project otherwise picks up every *.cs recursively, causing
+    hundreds of duplicate-class errors.
+  -->
+  <ItemGroup>
+    <Compile Remove="android/**/*.cs" />
+    <Compile Remove=".godot/**/*.cs" />
+  </ItemGroup>
 </Project>
